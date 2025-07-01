@@ -1,3 +1,1 @@
-# README
-
-## Exploration of Cancer Genome Atlas for Glioma Review Paper
+# Exploration of Cancer Genome Atlas for Glioma Review Paper
