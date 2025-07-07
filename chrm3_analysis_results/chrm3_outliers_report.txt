@@ -1,0 +1,21 @@
+CHRM3 Expression Outliers Report
+==================================================
+
+High Expression Outliers (z-score > 2.0):
+  f88df5aa-1c0c-4318-83a0-4b2230a4814b: TPM=10.99, z-score=3.02
+  720ff723-a1db-483d-9b73-01e15068351f: TPM=9.51, z-score=2.51
+  9c1d847d-dab7-4226-b140-95a244a22310: TPM=12.70, z-score=3.61
+  3b8b7b48-4dd6-48c0-b36f-a554b5a2e0a9: TPM=9.74, z-score=2.59
+  0dd57486-1eb3-4711-b4ec-8e9de0c4c5a2: TPM=13.61, z-score=3.92
+  5ad58131-d9d3-4ea3-9d04-18cf480e1480: TPM=8.83, z-score=2.28
+  90b8a6ce-af5d-48ec-8d64-6642b0882598: TPM=21.23, z-score=6.53
+  b41c1914-0771-4d0a-b56e-41f712e65bf9: TPM=13.73, z-score=3.96
+  245c9ca4-50f5-4855-8a44-5bde3f482b8b: TPM=12.99, z-score=3.70
+  4006124f-a213-4d56-843f-0764b5f4a89b: TPM=12.29, z-score=3.46
+  0da1dde2-3a7d-43a1-81a4-0c9b12efcfa9: TPM=19.88, z-score=6.07
+  74bac7fb-444d-480c-8a92-8dc427206c2c: TPM=14.19, z-score=4.12
+  0194feb1-d8be-45e5-9b95-0596090e9ecc: TPM=8.70, z-score=2.23
+
+Low Expression Outliers (z-score < -2.0):
+
+Samples without detectable CHRM3:

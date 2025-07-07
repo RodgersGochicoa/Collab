@@ -1,0 +1,13 @@
+,Value
+Total samples,379.0
+Samples with CHRM3,379.0
+Samples without CHRM3,0.0
+Mean TPM,2.185753562005277
+Median TPM,1.0958
+Std TPM,2.9161553182423154
+Min TPM,0.0055
+Max TPM,21.227
+Mean FPKM,0.7860686015831133
+Median FPKM,0.3662
+Mean read count,492.1345646437995
+Median read count,233.0

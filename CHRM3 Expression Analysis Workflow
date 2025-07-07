@@ -1,0 +1,316 @@
+
+"""
+CHRM3 Expression Analysis (Single Type)
+Analyzes CHRM3 gene expression across multiple data folders, for one tumor type dataset
+"""
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import argparse
+from typing import Dict, List, Tuple
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class CHRM3Analyzer:
+    """Class to analyze CHRM3 expression across multiple samples"""
+    
+    def __init__(self, base_dir: str, output_dir: str = "chrm3_analysis_results"):
+        self.base_dir = Path(base_dir)
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
+        self.chrm3_data = {}
+        
+    def find_tsv_files(self) -> List[Path]:
+        """Find all TSV files in subdirectories"""
+        tsv_files = []
+        for folder in self.base_dir.iterdir():
+            if folder.is_dir():
+                tsv_files.extend(folder.glob("*.tsv"))
+        logger.info(f"Found {len(tsv_files)} TSV files")
+        return tsv_files
+    
+    def parse_tsv_file(self, file_path: Path) -> pd.DataFrame:
+        """Parse a single TSV file"""
+        try:
+            # Read the file, skipping comment lines
+            df = pd.read_csv(file_path, sep='\t', comment='#')
+            
+            # Clean column names (remove extra spaces)
+            df.columns = df.columns.str.strip()
+            
+            # Filter out summary rows (N_unmapped, N_multimapping, etc.)
+            df = df[~df['gene_id'].str.startswith('N_')]
+            
+            return df
+        except Exception as e:
+            logger.error(f"Error parsing {file_path}: {e}")
+            return None
+    
+    def extract_chrm3_expression(self, df: pd.DataFrame, sample_name: str) -> Dict:
+        """Extract CHRM3 expression data from dataframe"""
+        if df is None:
+            return None
+            
+        # Search for CHRM3 gene
+        chrm3_rows = df[df['gene_name'] == 'CHRM3']
+        
+        if chrm3_rows.empty:
+            logger.warning(f"CHRM3 not found in {sample_name}")
+            return {
+                'sample': sample_name,
+                'found': False,
+                'tpm_unstranded': 0,
+                'fpkm_unstranded': 0,
+                'fpkm_uq_unstranded': 0,
+                'unstranded_count': 0,
+                'stranded_first': 0,
+                'stranded_second': 0
+            }
+        
+        # Extract expression values
+        chrm3 = chrm3_rows.iloc[0]
+        return {
+            'sample': sample_name,
+            'found': True,
+            'gene_id': chrm3['gene_id'],
+            'tpm_unstranded': float(chrm3['tpm_unstranded']) if pd.notna(chrm3['tpm_unstranded']) else 0,
+            'fpkm_unstranded': float(chrm3['fpkm_unstranded']) if pd.notna(chrm3['fpkm_unstranded']) else 0,
+            'fpkm_uq_unstranded': float(chrm3['fpkm_uq_unstranded']) if pd.notna(chrm3['fpkm_uq_unstranded']) else 0,
+            'unstranded_count': int(chrm3['unstranded']) if pd.notna(chrm3['unstranded']) else 0,
+            'stranded_first': int(chrm3['stranded_first']) if pd.notna(chrm3['stranded_first']) else 0,
+            'stranded_second': int(chrm3['stranded_second']) if pd.notna(chrm3['stranded_second']) else 0
+        }
+    
+    def analyze_all_samples(self):
+        """Analyze CHRM3 expression across all samples"""
+        tsv_files = self.find_tsv_files()
+        
+        results = []
+        for tsv_file in tsv_files:
+            sample_name = tsv_file.parent.name
+            logger.info(f"Processing {sample_name}...")
+            
+            df = self.parse_tsv_file(tsv_file)
+            chrm3_data = self.extract_chrm3_expression(df, sample_name)
+            
+            if chrm3_data:
+                results.append(chrm3_data)
+        
+        # Create results dataframe
+        self.results_df = pd.DataFrame(results)
+        
+        # Save raw results
+        self.results_df.to_csv(self.output_dir / "chrm3_expression_data.csv", index=False)
+        logger.info(f"Saved results to {self.output_dir / 'chrm3_expression_data.csv'}")
+        
+        return self.results_df
+    
+    def generate_statistics(self):
+        """Generate summary statistics for CHRM3 expression"""
+        if self.results_df.empty:
+            logger.error("No results to analyze")
+            return
+        
+        # Filter samples where CHRM3 was found
+        found_df = self.results_df[self.results_df['found']]
+        
+        stats = {
+            'Total samples': len(self.results_df),
+            'Samples with CHRM3': len(found_df),
+            'Samples without CHRM3': len(self.results_df) - len(found_df),
+            'Mean TPM': found_df['tpm_unstranded'].mean(),
+            'Median TPM': found_df['tpm_unstranded'].median(),
+            'Std TPM': found_df['tpm_unstranded'].std(),
+            'Min TPM': found_df['tpm_unstranded'].min(),
+            'Max TPM': found_df['tpm_unstranded'].max(),
+            'Mean FPKM': found_df['fpkm_unstranded'].mean(),
+            'Median FPKM': found_df['fpkm_unstranded'].median(),
+            'Mean read count': found_df['unstranded_count'].mean(),
+            'Median read count': found_df['unstranded_count'].median()
+        }
+        
+        # Save statistics
+        stats_df = pd.DataFrame([stats]).T
+        stats_df.columns = ['Value']
+        stats_df.to_csv(self.output_dir / "chrm3_statistics.csv")
+        
+        logger.info("Summary Statistics:")
+        for key, value in stats.items():
+            logger.info(f"  {key}: {value:.2f}" if isinstance(value, float) else f"  {key}: {value}")
+        
+        return stats
+    
+    def create_visualizations(self):
+        """Create visualizations for CHRM3 expression"""
+        if self.results_df.empty:
+            logger.error("No results to visualize")
+            return
+        
+        found_df = self.results_df[self.results_df['found']]
+        
+        # Set up the plot style
+        plt.style.use('seaborn-v0_8')
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle('CHRM3 Expression Analysis', fontsize=16)
+        
+        # 1. TPM distribution histogram
+        ax1 = axes[0, 0]
+        ax1.hist(found_df['tpm_unstranded'], bins=30, edgecolor='black', alpha=0.7)
+        ax1.set_xlabel('TPM (Unstranded)')
+        ax1.set_ylabel('Frequency')
+        ax1.set_title('Distribution of CHRM3 TPM Values')
+        ax1.axvline(found_df['tpm_unstranded'].mean(), color='red', linestyle='--', 
+                   label=f'Mean: {found_df["tpm_unstranded"].mean():.2f}')
+        ax1.axvline(found_df['tpm_unstranded'].median(), color='green', linestyle='--', 
+                   label=f'Median: {found_df["tpm_unstranded"].median():.2f}')
+        ax1.legend()
+        
+        # 2. FPKM vs TPM scatter plot
+        ax2 = axes[0, 1]
+        ax2.scatter(found_df['tpm_unstranded'], found_df['fpkm_unstranded'], alpha=0.6)
+        ax2.set_xlabel('TPM (Unstranded)')
+        ax2.set_ylabel('FPKM (Unstranded)')
+        ax2.set_title('TPM vs FPKM Correlation')
+        
+        # Add correlation coefficient
+        corr = found_df['tpm_unstranded'].corr(found_df['fpkm_unstranded'])
+        ax2.text(0.05, 0.95, f'Correlation: {corr:.3f}', transform=ax2.transAxes, 
+                verticalalignment='top')
+        
+        # 3. Box plot of expression metrics
+        ax3 = axes[1, 0]
+        expression_data = found_df[['tpm_unstranded', 'fpkm_unstranded', 'fpkm_uq_unstranded']]
+        expression_data.columns = ['TPM', 'FPKM', 'FPKM_UQ']
+        expression_data.boxplot(ax=ax3)
+        ax3.set_ylabel('Expression Value')
+        ax3.set_title('Expression Metrics Comparison')
+        ax3.set_xticklabels(['TPM', 'FPKM', 'FPKM_UQ'], rotation=45)
+        
+        # 4. Top 20 samples by TPM
+        ax4 = axes[1, 1]
+        top_samples = found_df.nlargest(20, 'tpm_unstranded')
+        y_pos = np.arange(len(top_samples))
+        ax4.barh(y_pos, top_samples['tpm_unstranded'])
+        ax4.set_yticks(y_pos)
+        ax4.set_yticklabels(top_samples['sample'], fontsize=8)
+        ax4.set_xlabel('TPM (Unstranded)')
+        ax4.set_title('Top 20 Samples by CHRM3 Expression (TPM)')
+        ax4.invert_yaxis()
+        
+        plt.tight_layout()
+        plt.savefig(self.output_dir / 'chrm3_expression_plots.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Create a log-scale plot for better visualization of low expressors
+        fig2, ax = plt.subplots(figsize=(10, 6))
+        
+        # Sort samples by TPM
+        sorted_df = found_df.sort_values('tpm_unstranded', ascending=False).reset_index(drop=True)
+        
+        ax.scatter(range(len(sorted_df)), sorted_df['tpm_unstranded'], alpha=0.6)
+        ax.set_yscale('log')
+        ax.set_xlabel('Sample Index (sorted by expression)')
+        ax.set_ylabel('TPM (log scale)')
+        ax.set_title('CHRM3 Expression Across All Samples (Log Scale)')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(self.output_dir / 'chrm3_expression_log_scale.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Saved visualizations to {self.output_dir}")
+    
+    def identify_outliers(self, threshold_std: float = 2.0):
+        """Identify samples with unusually high or low CHRM3 expression"""
+        if self.results_df.empty:
+            return
+        
+        found_df = self.results_df[self.results_df['found']]
+        
+        # Calculate z-scores
+        mean_tpm = found_df['tpm_unstranded'].mean()
+        std_tpm = found_df['tpm_unstranded'].std()
+        
+        found_df['z_score'] = (found_df['tpm_unstranded'] - mean_tpm) / std_tpm
+        
+        # Identify outliers
+        high_outliers = found_df[found_df['z_score'] > threshold_std]
+        low_outliers = found_df[found_df['z_score'] < -threshold_std]
+        
+        # Save outliers
+        outliers_report = {
+            'High Expression Outliers': high_outliers[['sample', 'tpm_unstranded', 'z_score']].to_dict('records'),
+            'Low Expression Outliers': low_outliers[['sample', 'tpm_unstranded', 'z_score']].to_dict('records'),
+            'Samples without CHRM3': self.results_df[~self.results_df['found']]['sample'].tolist()
+        }
+        
+        # Save outliers report
+        with open(self.output_dir / 'chrm3_outliers_report.txt', 'w') as f:
+            f.write("CHRM3 Expression Outliers Report\n")
+            f.write("=" * 50 + "\n\n")
+            
+            f.write(f"High Expression Outliers (z-score > {threshold_std}):\n")
+            for sample in outliers_report['High Expression Outliers']:
+                f.write(f"  {sample['sample']}: TPM={sample['tpm_unstranded']:.2f}, z-score={sample['z_score']:.2f}\n")
+            
+            f.write(f"\nLow Expression Outliers (z-score < -{threshold_std}):\n")
+            for sample in outliers_report['Low Expression Outliers']:
+                f.write(f"  {sample['sample']}: TPM={sample['tpm_unstranded']:.2f}, z-score={sample['z_score']:.2f}\n")
+            
+            f.write("\nSamples without detectable CHRM3:\n")
+            for sample in outliers_report['Samples without CHRM3']:
+                f.write(f"  {sample}\n")
+        
+        logger.info(f"Identified {len(high_outliers)} high expression outliers and {len(low_outliers)} low expression outliers")
+        
+        return outliers_report
+
+def main():
+    # CONFIGURE YOUR PATH HERE
+    BASE_DIR = "/Users/nikhilmodayur/Desktop/GDC_TCGA_DATA"  # <-- Change this to your data directory
+    OUTPUT_DIR = "chrm3_analysis_results"  # <-- Change this if you want different output location
+    OUTLIER_THRESHOLD = 2.0  # <-- Change this to adjust outlier detection sensitivity
+    
+    # Optional: Still allow command line override
+    parser = argparse.ArgumentParser(description='Analyze CHRM3 expression across genomic samples')
+    parser.add_argument('base_dir', nargs='?', default=BASE_DIR,
+                       help='Base directory containing sample folders (default: configured in script)')
+    parser.add_argument('--output', '-o', default=OUTPUT_DIR, 
+                       help=f'Output directory for results (default: {OUTPUT_DIR})')
+    parser.add_argument('--outlier-threshold', '-t', type=float, default=OUTLIER_THRESHOLD,
+                       help=f'Z-score threshold for outlier detection (default: {OUTLIER_THRESHOLD})')
+    
+    args = parser.parse_args()
+    
+    # Initialize analyzer
+    analyzer = CHRM3Analyzer(args.base_dir, args.output)
+    
+    # Run analysis
+    logger.info("Starting CHRM3 expression analysis...")
+    
+    # Analyze all samples
+    results = analyzer.analyze_all_samples()
+    
+    if not results.empty:
+        # Generate statistics
+        analyzer.generate_statistics()
+        
+        # Create visualizations
+        analyzer.create_visualizations()
+        
+        # Identify outliers
+        analyzer.identify_outliers(args.outlier_threshold)
+        
+        logger.info(f"Analysis complete! Results saved to {analyzer.output_dir}")
+    else:
+        logger.error("No valid data found to analyze")
+
+if __name__ == "__main__":
+    main()
